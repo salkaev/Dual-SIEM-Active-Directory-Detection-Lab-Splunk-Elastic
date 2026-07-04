@@ -18,13 +18,13 @@ Before attacking anything, I confirmed which account in the domain actually had 
 
 In Active Directory Users and Computers, the `svc_sql` account's Attribute Editor shows a `servicePrincipalName` value of `http/svc_sql.salkaev.local`:
 
-![SPN attribute on svc_sql](images/01_spn_attribute.png)
+![SPN attribute on svc_sql](screenshots/01_spn_attribute.png)
 
 I confirmed the same thing from the command line with `setspn -L`, run from both an English-locale host and my Russian-locale VM, to make sure the SPN registration was consistent and correctly readable from a standard admin session:
 
-![setspn -L output, English locale](images/02_setspn_query_en.png)
+![setspn -L output, English locale](screenshots/02_setspn_query_en.png)
 
-![setspn -L output, Russian locale VM](images/03_setspn_query_ru.png)
+![setspn -L output, Russian locale VM](screenshots/03_setspn_query_ru.png)
 
 **Why this matters:** in a real environment, this reconnaissance step would normally be done with a tool like PowerView or a plain LDAP query filtering on `servicePrincipalName=*`, since an attacker doesn't have GUI access to ADUC. I used ADUC here only because it's my own lab and I wanted to visually verify the attribute before automating anything.
 
@@ -32,7 +32,7 @@ I confirmed the same thing from the command line with `setspn -L`, run from both
 
 I used [Rubeus](https://github.com/GhostPack/Rubeus) (v1.6.4), a well-known open-source Kerberos abuse toolkit, to request a service ticket for `svc_sql` and extract it in a crackable format:
 
-![Rubeus GitHub repository](images/04_rubeus_tool.png)
+![Rubeus GitHub repository](screenshots/04_rubeus_tool.png)
 
 ```
 Rubeus.exe kerberoast /domain:salkaev.local /dc:192.168.10.7
@@ -40,7 +40,7 @@ Rubeus.exe kerberoast /domain:salkaev.local /dc:192.168.10.7
 
 Rubeus enumerated the domain over LDAP, found one Kerberoastable account (`svc_sql`), and returned its TGS hash directly:
 
-![Rubeus kerberoasting output](images/05_rubeus_kerberoast.png)
+![Rubeus kerberoasting output](screenshots/05_rubeus_kerberoast.png)
 
 Key details from the output:
 - **SamAccountName:** svc_sql
@@ -57,7 +57,7 @@ hashcat.exe -m 19700 hash_clean.txt rockyou.txt
 
 The password was cracked successfully:
 
-![Hashcat cracked result](images/06_hashcat_cracked.png)
+![Hashcat cracked result](screenshots/06_hashcat_cracked.png)
 
 Hashcat reported a `Cracked` status, confirming that the `svc_sql` account's password was weak enough to be recovered from a standard wordlist without any masks or rules applied.
 
