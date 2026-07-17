@@ -64,10 +64,11 @@ The laboratory is used to practice and validate analytical workflows:
 
 ```mermaid
 flowchart TD
-    Event[Adversary Action / Security Event] --> EWB[Elastic Winlogbeat]
-    EWB --> Kibana[Elasticsearch & Kibana / ES|QL & KQL]
-    Kibana --> Inv[Incident Investigation & Triage]
-    Inv --> Rule[Elastic Security Detection Rule / Alert]
+    Event["Adversary Action / Security Event"] --> EWB["Elastic Winlogbeat"]
+    EWB --> Kibana["Elasticsearch & Kibana (ES|QL & KQL)"]
+    Kibana --> Inv["Incident Investigation & Triage"]
+    Inv --> Rule["Elastic Security Detection Rule / Alert"]
 
     style Event fill:#ffe8cc,stroke:#f08c00,stroke-width:2px
     style Rule fill:#d0ebff,stroke:#228be6,stroke-width:2px
+```
