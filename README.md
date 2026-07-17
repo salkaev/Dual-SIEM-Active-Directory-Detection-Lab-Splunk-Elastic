@@ -79,8 +79,8 @@ flowchart TD
 
     Inv --> Rule[Cross-SIEM Detection Rule / Sigma]
 
-    style Event fill:#f9f,stroke:#333,stroke-width:2px
-    style Rule fill:#bbf,stroke:#333,stroke-width:2px
+    style Event fill:#ffe8cc,stroke:#f08c00,stroke-width:2px
+    style Rule fill:#d0ebff,stroke:#228be6,stroke-width:2px
 
 ```
 
