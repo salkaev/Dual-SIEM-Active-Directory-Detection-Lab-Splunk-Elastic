@@ -1,95 +1,156 @@
+````markdown
 # Kerberoasting Attack — AD Lab Report
 
-**Lab:** salkaev.local (Windows Server AD Domain Controller + Windows 10 client)
-**Target account:** `svc_sql` (service account)
-**Tools used:** Active Directory Users and Computers, `setspn`, Rubeus 1.6.4, Hashcat 7.1.2 (mode 19700, rockyou.txt wordlist)
+**Lab:** salkaev.local (Windows Server AD Domain Controller + Windows 10 client)  
+**Target account:** `svc_sql` (service account)  
+**Tools used:** Active Directory Users and Computers, `setspn`, Rubeus 1.6.4 Elastic Security (ES|QL)
+
+---
 
 ## Objective
 
-Simulate a Kerberoasting attack against a service account in my home AD lab, extract and crack the resulting TGS hash, and use the results to build a Splunk detection rule for this technique as part of my AD-Splunk-Lab project.
+Simulate a Kerberoasting attack against a service account in my home Active Directory lab, extract and crack the resulting TGS hash, and develop an Elastic ES|QL detection capable of identifying Kerberoasting activity.
+
+---
 
 ## Background
 
-Kerberoasting targets service accounts that have a Service Principal Name (SPN) registered in Active Directory. Any authenticated domain user can request a Kerberos service ticket (TGS) for such an account without needing elevated privileges. The ticket is encrypted with the service account's password hash, which means it can be extracted and cracked offline — no interaction with the target service is required after the ticket is obtained.
+Kerberoasting targets Active Directory service accounts that have a Service Principal Name (SPN) registered. Any authenticated domain user can request a Kerberos service ticket (TGS) for these accounts without requiring elevated privileges.
 
-## Step 1 — Identify a Kerberoastable Account
+The returned ticket is encrypted using the service account's password hash. Once obtained, the ticket can be cracked completely offline without any further interaction with the target service, making Kerberoasting one of the most common Active Directory credential access techniques (MITRE ATT&CK T1558.003).
 
-Before attacking anything, I confirmed which account in the domain actually had an SPN registered, since only SPN-bound accounts are exploitable this way.
+---
 
-In Active Directory Users and Computers, the `svc_sql` account's Attribute Editor shows a `servicePrincipalName` value of `http/svc_sql.salkaev.local`:
+# Step 1 — Identify a Kerberoastable Account
+
+Before requesting any Kerberos tickets, I verified which account in the domain had an SPN registered.
+
+The `svc_sql` account contains the following Service Principal Name:
+
+```
+http/svc_sql.salkaev.local
+```
 
 ![SPN attribute on svc_sql](screenshots/01_spn_attribute.png)
 
-I confirmed the same thing from the command line with `setspn -L`, run from both an English-locale host and my Russian-locale VM, to make sure the SPN registration was consistent and correctly readable from a standard admin session:
+The same information was confirmed using the built-in `setspn` utility.
 
-![setspn -L output, English locale](screenshots/02_setspn_query_en.png)
+![setspn output (English)](screenshots/02_setspn_query_en.png)
 
-![setspn -L output, Russian locale VM](screenshots/03_setspn_query_ru.png)
+![setspn output (Russian)](screenshots/03_setspn_query_ru.png)
 
-**Why this matters:** in a real environment, this reconnaissance step would normally be done with a tool like PowerView or a plain LDAP query filtering on `servicePrincipalName=*`, since an attacker doesn't have GUI access to ADUC. I used ADUC here only because it's my own lab and I wanted to visually verify the attribute before automating anything.
+**Why this matters**
 
-## Step 2 — Request and Extract the TGS Hash
+In a real environment an attacker would typically enumerate SPNs using LDAP queries or PowerView rather than Active Directory Users and Computers. The graphical interface was used only to visually verify the lab configuration before beginning the attack.
 
-I used [Rubeus](https://github.com/GhostPack/Rubeus) (v1.6.4), a well-known open-source Kerberos abuse toolkit, to request a service ticket for `svc_sql` and extract it in a crackable format:
+---
 
-![Rubeus GitHub repository](screenshots/04_rubeus_tool.png)
+# Step 2 — Request and Extract the TGS Hash
 
-```
+I used **Rubeus v1.6.4** to enumerate Kerberoastable accounts and request a Kerberos service ticket.
+
+```powershell
 Rubeus.exe kerberoast /domain:salkaev.local /dc:192.168.10.7
 ```
 
-Rubeus enumerated the domain over LDAP, found one Kerberoastable account (`svc_sql`), and returned its TGS hash directly:
+![Rubeus GitHub repository](screenshots/04_rubeus_tool.png)
 
-![Rubeus kerberoasting output](screenshots/05_rubeus_kerberoast.png)
+Rubeus successfully discovered the `svc_sql` account and extracted its TGS hash.
 
-Key details from the output:
-- **SamAccountName:** svc_sql
-- **ServicePrincipalName:** http/svc_sql.salkaev.local
-- **Supported ETypes:** RC4_HMAC_DEFAULT — meaning the ticket is encrypted with RC4 (etype 23), the weakest and fastest-to-crack Kerberos encryption type still commonly seen in real environments due to legacy application compatibility.
+![Rubeus Kerberoast output](screenshots/05_rubeus_kerberoast.png)
 
-## Step 3 — Crack the Hash Offline
+The output showed:
 
-The extracted hash (`$krb5tgs$18$svc_sql...`) was fed into Hashcat using mode `19700` (Kerberos 5, etype 18, TGS-REP) against the `rockyou.txt` wordlist:
+- **SamAccountName:** `svc_sql`
+- **SPN:** `http/svc_sql.salkaev.local`
+- **Encryption Type:** RC4_HMAC_DEFAULT (etype 23)
 
-```
+---
+
+# Step 3 — Crack the Hash Offline
+
+The extracted Kerberos hash was supplied to Hashcat using mode **19700**.
+
+```powershell
 hashcat.exe -m 19700 hash_clean.txt rockyou.txt
 ```
 
-The password was cracked successfully:
+Hashcat successfully recovered the service account password.
 
-![Hashcat cracked result](screenshots/06_hashcat_cracked.png)
+![Hashcat cracked password](screenshots/06_hashcat_cracked.png)
 
-Hashcat reported a `Cracked` status, confirming that the `svc_sql` account's password was weak enough to be recovered from a standard wordlist without any masks or rules applied.
+This demonstrates that Kerberoasting enables offline password recovery without generating repeated authentication attempts or triggering account lockout mechanisms.
 
-## What Didn't Work (Troubleshooting Notes)
+---
 
-The path from "Rubeus writes a hash file" to "Hashcat actually loads it" was not as smooth as the final result suggests, and this part is worth documenting because the failure mode is a real, recurring gotcha:
+# Troubleshooting Notes
 
-- The first hash file Rubeus wrote (via `/outfile:`) looked correct in the console, but Hashcat rejected it with `Separator unmatched` / `Token length exception`. The root cause was a **UTF-8 Byte Order Mark (BOM)** silently prepended to the file — Rubeus/.NET writes files with a BOM by default, and Hashcat's parser treats those extra invisible bytes as part of the hash structure, so it can't match the format.
-- Manually retyping or copy-pasting the hash through the PowerShell console made things worse, not better — long lines got wrapped and split by the terminal, and at least one asterisk delimiter was lost in the process, which produced a different error (`Separator unmatched` for a different reason: a missing field, not a BOM).
-- The fix was to stop editing the file by hand entirely and instead extract only the hash line and re-save it explicitly without a BOM (`-Encoding ascii` / `utf8NoBOM`, verified with `Format-Hex`), rather than trusting the raw Rubeus output file or manual retyping.
+The attack itself worked immediately, but preparing the hash for Hashcat required several fixes.
 
-**Takeaway:** when a hash "looks right" in the terminal but a cracking tool refuses to parse it, check the file's raw bytes before assuming the hash itself is wrong.
+The first hash file generated by Rubeus (`/outfile:`) contained a UTF-8 Byte Order Mark (BOM). Although the hash appeared correct in the console, Hashcat rejected it with errors such as:
 
-## Result
+- `Separator unmatched`
+- `Token length exception`
 
-- Successfully identified a Kerberoastable service account in the lab domain.
-- Extracted its TGS hash without triggering any interaction with the service itself.
-- Cracked the account's password offline using a standard wordlist, with no rate-limiting or lockout risk, since Kerberoasting doesn't touch the authentication path that account lockout policies monitor.
+Copying the hash manually through the PowerShell console introduced additional formatting issues because long lines wrapped across the terminal.
 
-## Detection Recommendations (for AD-Splunk-Lab)
+The solution was to extract only the hash line and save it explicitly without a BOM (`ASCII` / `utf8NoBOM`), verifying the file contents using `Format-Hex`.
 
-Based on this attack, the following should be detectable in Splunk via Windows Security Event ID **4769** (Kerberos Service Ticket Request):
+**Takeaway:** when Hashcat rejects an apparently valid Kerberos hash, always verify the file encoding before assuming the hash itself is malformed.
 
-1. **Encryption type filter** — flag 4769 events where `Ticket_Encryption_Type` is `0x17` (RC4), since modern, properly configured environments should predominantly use AES (`0x11`/`0x12`). A sudden RC4 request for an account that normally uses AES is a strong signal.
-2. **Frequency/volume anomaly** — a single source account requesting TGS tickets for multiple different SPNs in a short time window is consistent with a Kerberoasting sweep (as opposed to normal application behavior, which requests a ticket for *one* known service repeatedly).
-3. **Noise filtering** — exclude machine accounts (`$`-suffixed accounts), which generate the majority of baseline Kerberos traffic, before applying either rule above. Without this filter, both detections above will be dominated by legitimate computer-account noise.
+---
 
-Next step: implement rule #1 as a working SPL query against the lab's Splunk index and validate it fires on this exact attack replay.
+# Result
 
-## Environment Notes
+The attack successfully demonstrated the complete Kerberoasting workflow:
 
-- Domain: `salkaev.local`
-- Domain Controller: `192.168.10.7`
-- Attack host: Windows 10 client (VirtualBox VM)
-- All activity performed against my own isolated home lab; no external systems or accounts were involved.
+- Identified a Kerberoastable service account.
+- Requested a Kerberos service ticket.
+- Extracted the TGS hash.
+- Cracked the service account password offline using Hashcat.
+
+---
+
+# Detection in Elastic
+
+After replaying the attack, I implemented an **ES|QL** detection rule that identifies an unusually high number of Kerberos Service Ticket requests (Windows Security Event ID **4769**) while filtering out machine accounts to reduce baseline authentication noise.
+
+```sql
+FROM winlogbeat-*
+| WHERE event.code == "4769"
+    AND NOT winlog.event_data.TargetUserName RLIKE ".*\\$@.*"
+| STATS count = COUNT(*)
+    BY winlog.event_data.TargetUserName,
+       bucket = DATE_TRUNC(5minutes, @timestamp)
+| WHERE count > 5
+```
+
+The detection successfully identified the Kerberoasting activity generated during the lab.
+
+![Elastic ES|QL detection](screenshots/07_elastic_kerberoast_detection.png)
+
+The query grouped Event ID **4769** records into five-minute windows and detected the account **ZXC@SALKAEV.LOCAL**, which generated **six Kerberos Service Ticket requests** within a single time bucket.
+
+Since the configured threshold was **greater than five requests**, the activity was flagged as suspicious. Filtering out machine accounts (`$`) significantly reduced normal Kerberos authentication noise and improved the visibility of user-generated ticket requests.
+
+Although intentionally simple, this ES|QL rule provides a practical proof of concept for detecting Kerberoasting activity within an Active Directory environment.
+
+---
+
+# Detection Recommendations
+
+This detection can be further improved by incorporating additional indicators:
+
+1. Alert on Event ID **4769** where the ticket encryption type is **RC4 (0x17)**, since modern environments should primarily use AES encryption.
+2. Detect users requesting tickets for multiple different SPNs within a short period of time.
+3. Build historical baselines for normal Kerberos ticket requests and alert on anomalous deviations.
+
+---
+
+# Environment
+
+- **Domain:** `salkaev.local`
+- **Domain Controller:** `192.168.10.7`
+- **Attack Host:** Windows 10 (VirtualBox VM)
+- **Detection Platform:** Elastic Security (ES|QL)
+- All testing was performed exclusively within my isolated Active Directory home lab. No production or external systems were involved.

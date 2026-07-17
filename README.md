@@ -1,10 +1,10 @@
-# Dual-SIEM Active Directory Detection Lab (Splunk & Elastic)
+# Active Directory Detection Lab (Elastic Security)
 
-This project demonstrates a hybrid, enterprise-like security monitoring environment built for SOC analyst training, Windows security analysis, and cross-SIEM investigation practice. 
+This project demonstrates an enterprise-like security monitoring environment built for SOC analyst training, Windows security analysis, and detection engineering practice using the Elastic Stack. 
 
-The unique feature of this laboratory is the **dual-engine telemetry collection**: it runs **Splunk Enterprise** and the **Elastic Stack (ELK)** in parallel. This allows for side-by-side comparison of attack detection using both **SPL** and **KQL** query languages within the same Active Directory infrastructure.
+The core feature of this laboratory is the implementation of a centralized telemetry collection pipeline that feeds into **Elastic Security (SIEM)**. This setup allows for hands-on experience in threat hunting and writing detection rules using the **ES|QL** and **KQL** query languages within a real Active Directory infrastructure.
 
-The goal of this laboratory is to simulate a corporate Windows infrastructure, collect security telemetry through different modern forwarders, analyze events, and prepare a solid foundation for detecting common adversary techniques.
+The goal of this laboratory is to simulate a corporate Windows infrastructure, collect security telemetry through modern forwarders, analyze events, and prepare a solid foundation for detecting common adversary techniques.
 
 # Lab Architecture
 
@@ -14,15 +14,14 @@ The environment consists of three virtual machines, with the monitoring infrastr
   - Active Directory Domain Services (AD DS) / Domain Controller
   - DNS Server
   - User and domain management
-  - Telemetry Shippers: Splunk Universal Forwarder & Elastic Winlogbeat
+  - Telemetry Shipper: Elastic Winlogbeat
 
 - **Windows 10 Workstation**
   - Domain-joined endpoint
   - Generates security events, user activity, and simulated attacks
 
 - **Ubuntu Server (Central Management & SIEM Host)**
-  - **Splunk Enterprise SIEM** (Native deployment for log indexing and SPL analysis)
-  - **Elastic Stack (ELK)** (Containerized via Docker Compose: Elasticsearch & Kibana for KQL analysis)
+  - **Elastic Stack (ELK)** (Containerized via Docker Compose: Elasticsearch & Kibana for security analysis and alerting)
 
 ## Architecture Diagram
 
@@ -42,97 +41,33 @@ The Windows 10 machine was joined to the domain and used as an endpoint for gene
 
 ![Active Directory](screenshots/active-directory.png)
 
-# Dual-SIEM & Log Collection Infrastructure
+# SIEM & Log Collection Infrastructure
 
-Windows hosts send telemetry simultaneously to two independent analytics platforms, simulating a multi-vendor corporate environment:
+Windows hosts send telemetry to a centralized analytics platform, simulating a modern corporate security architecture. Windows hosts utilize **Elastic Winlogbeat** to ship logs via HTTP directly into containerized Elasticsearch.
 
-1. **Splunk Pipeline:** Windows hosts utilize the **Splunk Universal Forwarder** to stream logs natively to Splunk Enterprise.
-2. **Elastic Pipeline:** Windows hosts utilize **Elastic Winlogbeat** to ship logs via HTTP directly into containerized Elasticsearch.
-
-Collected telemetry across both platforms:
+Collected telemetry across the platform:
 - Windows Security Event Log (Authentication, process creation, etc.)
 - Windows System Event Log
 - Windows Application Event Log
 - Microsoft-Windows-Sysmon/Operational (Deep endpoint visibility)
 
-![SIEM Hosts](screenshots/splunk-hosts.png)
+![Kibana Discover](screenshots/kibana-discover.png)
 
 # Log Analysis & Detection Engineering
 
-The laboratory is used to practice and compare analytical workflows:
-- **Windows Event Investigation:** Analyzing telemetry from both Kibana and Splunk dashboards.
-- **Cross-Query Engineering:** Translating logic between **SPL** (Splunk Processing Language) and **KQL** (Kibana Query Language).
+The laboratory is used to practice and validate analytical workflows:
+- **Windows Event Investigation:** Analyzing telemetry using Kibana dashboards and Discover.
+- **Detection Engineering:** Creating advanced detection logic using **ES|QL** (Elasticsearch Query Language) and **KQL** (Kibana Query Language).
 - **Process Execution Monitoring:** Tracking malicious behavior using Sysmon Event IDs (e.g., Event ID 1 for Process Creation).
 
 ### Example Telemetry Workflow:
 
 ```mermaid
 flowchart TD
-    Event[Adversary Action / Security Event] --> SUF[Splunk Universal Forwarder]
-    Event --> EWB[Elastic Winlogbeat]
-
-    SUF --> Splunk[Splunk Enterprise / SPL Search]
-    EWB --> Kibana[Elasticsearch & Kibana / KQL]
-
-    Splunk --> Inv[Incident Investigation & Triage]
-    Kibana --> Inv
-
-    Inv --> Rule[Cross-SIEM Detection Rule / Sigma]
+    Event[Adversary Action / Security Event] --> EWB[Elastic Winlogbeat]
+    EWB --> Kibana[Elasticsearch & Kibana / ES|QL & KQL]
+    Kibana --> Inv[Incident Investigation & Triage]
+    Inv --> Rule[Elastic Security Detection Rule / Alert]
 
     style Event fill:#ffe8cc,stroke:#f08c00,stroke-width:2px
     style Rule fill:#d0ebff,stroke:#228be6,stroke-width:2px
-
-```
-
-# Security Use Cases
-
-Planned detection scenarios and threat hunting use cases:
-
-## Active Directory Attacks
-
-* Kerberoasting & AS-REP Roasting
-* DCSync attacks
-* Pass-the-Hash (PtH)
-* Golden Ticket persistence
-
-## Endpoint Attacks
-
-* Suspicious PowerShell/CMD execution
-* LOLBin abuse (Living off the Land Binaries)
-* LSASS credential dumping (Credential Access)
-* Persistence techniques (Registry modifications, scheduled tasks)
-
-## Network Investigation
-
-* Suspicious outbound connections
-* DNS anomalies and beaconing detection
-* Lateral movement tracking
-
-# Tools & Technologies
-
-| Category | Tools / Technologies |
-| --- | --- |
-| **SIEM Platforms** | Splunk Enterprise, Elasticsearch, Kibana |
-| **Log Shippers** | Splunk Universal Forwarder, Elastic Winlogbeat |
-| **Endpoint Monitoring** | Microsoft Sysmon |
-| **Infrastructure & Virtualization** | Docker, Docker Compose, VirtualBox / VMware |
-| **Operating Systems** | Windows Server, Windows 10, Ubuntu Server |
-| **Directory Services** | Active Directory (AD DS) |
-| **Query Languages** | SPL (Splunk), KQL (Kibana Query Language) |
-
-# Skills Practiced
-
-* **Multi-SIEM Administration:** Deploying and configuring both Splunk and Elastic (ELK) infrastructure.
-* **Containerization:** Running security tools using Docker and Docker Compose.
-* **Windows Security Monitoring:** Advanced understanding of Windows Event IDs and Sysmon behavior.
-* **Detection Engineering:** Creating signature-based detection logic using two different query standards.
-* **SOC Analyst Methodology:** Simulating corporate attacks and building incident investigation timelines.
-
-# Future Improvements
-
-* Map all simulated attacks to the **MITRE ATT&CK** framework.
-* Integrate **Sigma rules** to auto-translate detection logic between Splunk and Elastic formats.
-* Set up automated attack simulation scripts (e.g., Atomic Red Team).
-* Create incident investigation report templates.
-
-```
