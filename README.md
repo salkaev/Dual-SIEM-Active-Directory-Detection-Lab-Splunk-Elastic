@@ -66,23 +66,21 @@ The laboratory is used to practice and compare analytical workflows:
 
 ### Example Telemetry Workflow:
 
-       Security Event / Adversary Action
-                       |
-         +-------------+-------------+
-         |                           |
-         v                           v
-Splunk Universal Forwarder     Elastic Winlogbeat
-         |                           |
-         v                           v
-  Splunk Search (SPL)          Kibana Discover (KQL)
-         |                           |
-         +-------------+-------------+
-                       |
-                       v
-            Incident Investigation
-                       |
-                       v
-           Cross-SIEM Detection Rule
+```mermaid
+flowchart TD
+    Event[Adversary Action / Security Event] --> SUF[Splunk Universal Forwarder]
+    Event --> EWB[Elastic Winlogbeat]
+
+    SUF --> Splunk[Splunk Enterprise / SPL Search]
+    EWB --> Kibana[Elasticsearch & Kibana / KQL]
+
+    Splunk --> Inv[Incident Investigation & Triage]
+    Kibana --> Inv
+
+    Inv --> Rule[Cross-SIEM Detection Rule / Sigma]
+
+    style Event fill:#f9f,stroke:#333,stroke-width:2px
+    style Rule fill:#bbf,stroke:#333,stroke-width:2px
 
 ```
 
